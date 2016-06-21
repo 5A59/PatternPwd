@@ -3,11 +3,13 @@
 
     <attr name="originalColor" format="color" />
     <attr name="chooseColor" format="color" />
+    <attr name="backgroundColor" format="color" />
     <attr name="count" format="integer" />
 
     <declare-styleable name="PatternView" >
         <attr name="originalColor" />
         <attr name="chooseColor" />
+        <attr name="backgroundColor" />
         <attr name="count" />
     </declare-styleable>
 

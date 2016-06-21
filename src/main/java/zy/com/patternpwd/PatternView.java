@@ -5,12 +5,14 @@ import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Point;
+import android.graphics.PixelFormat;
+import android.graphics.PorterDuff;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -28,16 +30,22 @@ public class PatternView extends SurfaceView implements SurfaceHolder.Callback{
 
     private int originalColor;
     private int chooseColor;
+    private int backgroundColor;
     private int count;
 
     private int pointR = POINT_R;
     private int drawPointR = DRAW_POINT_R;
 
+    private boolean transparent = false;
+
     private List<Point> originalPoints;
     private List<Point> drawPoints;
+    private List<Integer> pattern;
     private Point tmpPoint;
     private DrawThread thread;
     private SurfaceHolder holder;
+
+    private PwdListener listener;
 
     public PatternView(Context context) {
         this(context, null);
@@ -50,9 +58,15 @@ public class PatternView extends SurfaceView implements SurfaceHolder.Callback{
     public PatternView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
 
+        originalColor = Color.BLUE;
+        chooseColor = Color.GRAY;
+        backgroundColor = Color.WHITE;
+        count = DEFAULT_COUNT;
+
+        pattern = new ArrayList<>();
         TypedArray typedArray = context.obtainStyledAttributes(attrs, R.styleable.PatternView, defStyleAttr, 0);
         int n = typedArray.getIndexCount();
-        Logger.d("n is " + n);
+
         for (int i = 0; i < n; i ++){
             int attr = typedArray.getIndex(i);
             switch (attr){
@@ -62,12 +76,21 @@ public class PatternView extends SurfaceView implements SurfaceHolder.Callback{
                 case R.styleable.PatternView_chooseColor:
                     chooseColor = typedArray.getColor(attr, Color.GRAY);
                     break;
+                case R.styleable.PatternView_backgroundColor:
+                    backgroundColor = typedArray.getColor(attr, Color.WHITE);
+                    break;
                 case R.styleable.PatternView_count:
                     count = typedArray.getInt(attr, DEFAULT_COUNT);
                     break;
             }
         }
         typedArray.recycle();
+
+        if (backgroundColor == Color.TRANSPARENT){
+            this.setZOrderOnTop(true);
+            this.getHolder().setFormat(PixelFormat.TRANSLUCENT);
+            transparent = true;
+        }
 
         holder = this.getHolder();
         holder.addCallback(this);
@@ -79,10 +102,11 @@ public class PatternView extends SurfaceView implements SurfaceHolder.Callback{
         drawPoints = new LinkedList<>();
         tmpPoint = new Point(0, 0);
 
-        int x = width / count / 4;
-        int y = height / count / 4;
-
         pointR = Math.min(width, height) / count / 4;
+
+        int x = width / count / 4 + pointR;
+        int y = height / count / 4 + pointR;
+
         drawPointR = pointR - 20;
 
         int wGap = width / count / 2;
@@ -90,7 +114,7 @@ public class PatternView extends SurfaceView implements SurfaceHolder.Callback{
 
         for (int i = 0; i < count; i ++){
             for (int j = 0; j < count; j ++){
-                originalPoints.add(new Point(x + j * 2 * wGap, y + i * 2 * hGap));
+                originalPoints.add(new Point(x + j * 2 * wGap, y + i * 2 * hGap, i * count + j));
             }
         }
     }
@@ -99,7 +123,7 @@ public class PatternView extends SurfaceView implements SurfaceHolder.Callback{
     public void surfaceCreated(SurfaceHolder holder) {
         width = this.getWidth();
         height = this.getHeight();
-        initPoints()
+        initPoints();
         thread.setRunning(true);
         thread.start();
     }
@@ -121,20 +145,31 @@ public class PatternView extends SurfaceView implements SurfaceHolder.Callback{
         Point p = null;
         switch (event.getAction()){
             case MotionEvent.ACTION_DOWN:
+                if (listener != null){
+                    listener.patternStart();
+                }
                 p = getPoint(x, y);
                 if (p != null){
                     drawPoints.add(p);
+                    if (listener != null){
+                        listener.patternAdd(p.getNum());
+                        pattern.add(p.getNum());
+                    }
                     return true;
                 }
                 break;
             case MotionEvent.ACTION_MOVE:
                 p = getPoint(x, y);
-                if (p != null){
+                if (p != null && (drawPoints.isEmpty() || drawPoints.get(drawPoints.size() - 1) != p)){
                     if (drawPoints.size() > 0 && drawPoints.get(drawPoints.size() - 1) == tmpPoint){
                         drawPoints.remove(drawPoints.size() - 1);
                     }
+                    if (listener != null){
+                        listener.patternAdd(p.getNum());
+                        pattern.add(p.getNum());
+                    }
                     drawPoints.add(p);
-                }else {
+                }else if (p == null){
                     tmpPoint.x = (int) x;
                     tmpPoint.y = (int) y;
                     if (drawPoints.size() > 0 && drawPoints.get(drawPoints.size() - 1) != tmpPoint){
@@ -145,6 +180,9 @@ public class PatternView extends SurfaceView implements SurfaceHolder.Callback{
             case MotionEvent.ACTION_UP:
                 if (drawPoints.size() > 0 && drawPoints.get(drawPoints.size() - 1) == tmpPoint){
                     drawPoints.remove(drawPoints.size() - 1);
+                }
+                if (listener != null){
+                    listener.patternEnd(pattern);
                 }
                 break;
         }
@@ -158,6 +196,15 @@ public class PatternView extends SurfaceView implements SurfaceHolder.Callback{
             }
         }
         return null;
+    }
+
+    public void setListener(PwdListener listener) {
+        this.listener = listener;
+    }
+
+    public void clearAll() {
+        pattern.clear();
+        drawPoints.clear();
     }
 
     public class DrawThread extends Thread {
@@ -191,7 +238,11 @@ public class PatternView extends SurfaceView implements SurfaceHolder.Callback{
             if (canvas == null){
                 return ;
             }
-            canvas.drawColor(Color.WHITE);
+            if (!transparent){
+                canvas.drawColor(backgroundColor);
+            }else {
+                canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+            }
             drawOriginal(canvas);
 
             if (drawPoints.isEmpty()){
