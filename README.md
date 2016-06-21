@@ -1,6 +1,7 @@
 # PatternPwd
 
-#### 九宫格加密
+#### 简介
+九宫格加密，继承 surfaceview 自己绘制
 
 #### 使用方法
 
@@ -62,3 +63,6 @@ public class MainActivity extends AppCompatActivity {
     }
 }
 ```
+
+#### 效果
+![pattern](./patternPwd.gif)
